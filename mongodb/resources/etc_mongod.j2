@@ -1,0 +1,13 @@
+systemLog:
+   destination: file
+   path: "/var/log/mongodb/mongod-rs{{ item.id }}-{{ item.member }}.log"
+processManagement:
+   fork: true
+net:
+   bindIp: 
+   port: {{ item.port }}
+storage:
+   dbPath: "/data/mongodb/rs{{ item.id }}-{{ item.member }}"
+   engine: "wiredTiger"
+replication:
+   replSetName: "rs{{ item.id }}"

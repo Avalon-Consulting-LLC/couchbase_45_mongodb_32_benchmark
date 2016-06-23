@@ -1,0 +1,65 @@
+---
+- name: Base Machine Configuration
+  hosts: all
+  become_method: sudo
+  tasks:
+  - name: Install dependencies
+    yum: name={{ item }} state=latest update_cache=yes
+    become: yes
+    with_items:
+    - libselinux-python
+    - python-setuptools
+    - openssl
+    - numactl
+    - iperf3
+    - bc
+
+  - name: Fix /etc/hosts
+    become: yes
+    lineinfile: dest=/etc/hosts regexp='^127\.0\.0\.1' line='127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4' owner=root group=root mode=0644
+
+  - name: Install httplib2
+    become: yes
+    easy_install: name=httplib2
+
+  - name: Disable iptables
+    become: yes
+    service: name=iptables state=stopped enabled=no
+    ignore_errors: true
+
+  - name: Disable SELinux
+    become: yes
+    selinux: state=disabled
+
+  - name: Turn down swapiness
+    become: yes
+    sysctl: name=vm.swappiness value=0 state=present
+    ignore_errors: true
+
+  - name: Disable THP
+    become: yes
+    shell: "{{ item }}" 
+    with_items:
+    - echo 'echo never > /sys/kernel/mm/transparent_hugepage/enabled' >> /etc/rc.local
+    - echo 'echo never > /sys/kernel/mm/transparent_hugepage/defrag' >> /etc/rc.local
+    - echo never > /sys/kernel/mm/transparent_hugepage/enabled
+    - echo never > /sys/kernel/mm/transparent_hugepage/defrag
+
+  - name: Increase open files
+    become: yes
+    shell: echo "* - nofile 65536" >> /etc/security/limits.conf
+
+  - name: Disable NUMA
+    become: yes
+    sysctl: name=vm.zone_reclaim_mode value=0 state=present
+    ignore_errors: true
+
+  - name: Check if deps exists
+    become: yes
+    stat: path=/vagrant/deps
+    register: deps
+
+  - name: Create deps Directory
+    become: yes
+    file: path=/vagrant/deps state=directory
+    when: deps.stat.exists == False

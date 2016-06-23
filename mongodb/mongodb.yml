@@ -1,0 +1,88 @@
+---
+- name: Install MongoDB
+  hosts: all
+  sudo: yes
+  vars:
+    config_dbpath: /db/configdb
+    config_logpath: /var/log/mongodb/mongod-configsvr.log
+    data_path: /data/mongodb
+    config_port: 27020
+    mongos_config: '{{ hostvars["server1"]["ansible_ssh_host"] }}:27020,{{ hostvars["server2"]["ansible_ssh_host"] }}:27020,{{ hostvars["server3"]["ansible_ssh_host"] }}:27020'
+    mongos_port: 27021
+    mongos_logpath: /var/log/mongodb/mongos.log
+  tasks:
+  - name: Add MongoDB repo file
+    copy: src=resources/template.mongodb-org-3.2.repo dest=/etc/yum.repos.d/mongodb-org-3.2.repo
+
+  - name: Install MongoDB
+    yum: name=mongodb-org state=latest
+  
+  - name: Create config server data directory
+    file: path={{ config_dbpath }} state=directory
+    when: config
+
+  - name: Start the Config Server
+    shell: numactl --interleave=all mongod --configsvr --dbpath {{ config_dbpath }} --logpath {{ config_logpath }} --port {{ config_port }} --fork
+    when: config
+    ignore_errors: true
+
+  - name: Create data directories
+    file: path={{ data_path }}/rs{{ item.id }}-{{ item.member }} state=directory recurse=yes
+    with_items: "{{ servers }}"
+  
+  - name: Copy mongod config file
+    template: src=resources/etc_mongod.j2 dest=/etc/mongod_custom_rs{{ item.id }}-{{ item.member }}.conf
+    with_items: "{{ servers }}"
+ 
+  - name: Start mongod instances
+    shell: numactl --interleave=all mongod --config /etc/mongod_custom_rs{{ item.id }}-{{ item.member }}.conf; sleep 1;
+    with_items: "{{ servers }}"
+    ignore_errors: true
+
+  - name: Start mongos instance
+    shell: numactl --interleave=all mongos --configdb {{ mongos_config }} --port {{ mongos_port }} --logpath {{ mongos_logpath }} --fork
+    when: isLast
+    ignore_errors: true
+
+  - name: Create Primary Replicas
+    shell: mongo {{ hostvars["server"~item]["ansible_ssh_host"] }}:27017/ycsb 
+      --eval 'var id = {{ item }}, primary = "{{ hostvars["server"~item]["ansible_ssh_host"]}}"' 
+      /vagrant/resources/configure_replset.js
+    with_items: id_list
+    when: isLast
+    ignore_errors: true
+  
+  - name: Create Replica 1
+    shell: mongo {{ hostvars["server"~item]["ansible_ssh_host"] }}:27017/ycsb 
+      --eval 'rs.add("{{ hostvars["server"~repsets[""~item]["rep1"]]["ansible_ssh_host"] }}:27018")' 
+    with_items: id_list
+    when: isLast
+    ignore_errors: true
+  
+#  - name: Create Replica 2
+#    shell: mongo {{ hostvars["server"~item]["ansible_ssh_host"] }}:27017/ycsb 
+#      --eval 'rs.add("{{ hostvars["server"~repsets[""~item]["rep2"]]["ansible_ssh_host"] }}:27019")' 
+#    with_items: id_list
+#    when: isLast
+#    ignore_errors: true
+
+  - name: Use mongos to create Shards
+    shell: mongo {{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:27021/ycsb 
+      --eval 'sh.addShard("rs{{ item }}/{{ hostvars["server"~item]["ansible_ssh_host"]}}:27017")'
+    with_items: id_list
+    when: isLast
+    ignore_errors: true
+
+  - name: Enable sharding on the usertable
+    shell: mongo {{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:27021/admin 
+      /vagrant/resources/configure_shards.js
+    when: isLast
+
+#  - name: Create indexes
+#    shell: mongo {{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:27021/ycsb 
+#      /vagrant/resources/configure_indexes.js
+#    when: isLast
+#    ignore_errors: true
+
+  - name: Copy iPerf scripts
+    copy: src=../iperf3YCSBtoServerTest.sh dest=/opt mode=0755

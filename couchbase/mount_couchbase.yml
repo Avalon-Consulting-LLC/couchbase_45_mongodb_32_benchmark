@@ -1,0 +1,24 @@
+---
+- name: Mount drives for storage
+  hosts: all
+  become_method: sudo
+  vars:
+    mapping: [
+      {"drive": "/dev/xvdb", "mount": "/data"},
+      {"drive": "/dev/xvdc", "mount": "/index"}
+    ]
+  tasks:
+  - name: Create file system for drives
+    become: yes
+    filesystem: fstype="ext4" dev="{{ item.drive }}"
+    with_items: mapping
+
+  - name: Create mount directories
+    become: yes
+    file: path="{{ item.mount }}" state=directory
+    with_items: mapping
+
+  - name: Mount drives
+    become: yes
+    mount: name="{{ item.mount }}" src="{{ item.drive }}" fstype="ext4" state="mounted"
+    with_items: mapping

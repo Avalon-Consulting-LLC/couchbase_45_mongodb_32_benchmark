@@ -1,0 +1,30 @@
+---
+- name: Get, Alter, and Push Couchbase Index settings
+  hosts: all
+  become_method: sudo
+  vars:
+    rebalance_hostname: query6
+  tasks:
+  - name: Get Index Settings
+    become: yes
+    uri:
+      url=http://localhost:9102/settings
+      method=GET
+      force_basic_auth=yes
+      user=couchbase
+      password=couchbase
+      dest=/tmp/settings.json
+    when: inventory_hostname == rebalance_hostname
+
+  - name: Edit JSON settings
+    become: yes
+    replace: dest=/tmp/settings.json regexp='{{ item.regexp }}' replace='{{ item.line }}'
+    with_items:
+    - { regexp: '"indexer.settings.maxVbQueueLength":.*?,', line: '"indexer.settings.maxVbQueueLength": 5000,' }
+    - { regexp: '"indexer.settings.max_cpu_percent":.*?,', line: '"indexer.settings.max_cpu_percent": 400,' }
+    - { regexp: '"indexer.settings.wal_size":.*?,', line: '"indexer.settings.wal_size": 40960,' }
+    when: inventory_hostname == rebalance_hostname
+
+  - name: Send the settings back
+    command: 'curl localhost:9102/settings -u couchbase:couchbase -d @/tmp/settings.json'
+    when: inventory_hostname == rebalance_hostname

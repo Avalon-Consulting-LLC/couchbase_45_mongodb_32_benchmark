@@ -1,0 +1,105 @@
+# -*- mode: ruby -*-
+# # vi: set ft=ruby :
+
+require 'yaml'
+
+settings = YAML.load_file '../private_settings.yml'
+machines = [
+  {:name => "data1", :ip => "192.168.56.41", :services => "data,index,query"},
+  {:name => "data2", :ip => "192.168.56.42", :services => "data,index,query"},  
+  {:name => "data3", :ip => "192.168.56.43", :services => "data,index,query"},
+  {:name => "data4", :ip => "192.168.56.44", :services => "data,index,query"},
+  {:name => "data5", :ip => "192.168.56.45", :services => "data,index,query"},
+  {:name => "data6", :ip => "192.168.56.46", :services => "data,index,query"},
+  {:name => "data7", :ip => "192.168.56.47", :services => "data,index,query"},
+  {:name => "data8", :ip => "192.168.56.48", :services => "data,index,query"},
+  {:name => "data9", :ip => "192.168.56.49", :services => "data,index,query"}
+  # {:name => "query1", :ip => "192.168.56.44", :services => "index,query"},
+  # {:name => "query2", :ip => "192.168.56.45", :services => "index,query"},
+  # {:name => "query3", :ip => "192.168.56.46", :services => "index,query"},
+  # {:name => "query4", :ip => "192.168.56.47", :services => "index,query"},
+  # {:name => "query5", :ip => "192.168.56.48", :services => "index,query"},
+  # {:name => "query6", :ip => "192.168.56.49", :services => "index,query"},
+]
+
+Vagrant.configure(2) do |config|
+  config.ssh.insert_key = false
+
+  if Vagrant.has_plugin?("vagrant-cachier")
+    config.cache.scope = :machine
+  end
+  
+  machines.each_with_index do |machine, i|
+    config.vm.define machine[:name] do |vmconfig|
+      vmconfig.vm.provider "aws" do |aws, override|
+        aws.access_key_id = settings["aws"]["access_key_id"]
+        aws.secret_access_key = settings["aws"]["secret_access_key"]
+        aws.region = settings["benchmark"]["aws_region"]
+        aws.availability_zone = settings["benchmark"]["aws_availability_zone"]
+        aws.keypair_name = settings["benchmark"]["keypairname"]
+        aws.security_groups =  settings["benchmark"]["secgroups"]
+        aws.ami =  settings["benchmark"]["db_ami"]
+        
+        aws.ssh_host_attribute = :dns_name
+        aws.ami =  settings["benchmark"]["db_ami"]
+        aws.instance_type = settings["benchmark"]["db_size"]
+        
+        aws.block_device_mapping = [
+          {
+            "DeviceName" => "/dev/sda1",
+            "Ebs.DeleteOnTermination" => true,
+            'Ebs.VolumeSize' => 40,
+          },
+          {
+            "DeviceName" => "/dev/sdb",
+            "VirtualName" => "ephemeral0",
+            'Ebs.VolumeSize' => 320,
+            'Ebs.DeleteOnTermination' => true,
+          },
+          {
+            "DeviceName" => "/dev/sdc",
+            "VirtualName" => "ephemeral1",
+            'Ebs.VolumeSize' => 320,
+            'Ebs.DeleteOnTermination' => true,
+          }
+        ]
+        aws.tags = {
+          'Name' => machine[:name],
+          'Type' => 'Couchbase'
+        }
+        override.vm.box = "dummy"
+        override.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
+        override.ssh.username = settings["ssh"]["username"]
+        override.ssh.private_key_path = settings["ssh"]["private_key_path"]
+      end
+
+      vmconfig.vm.provision "base", type: "ansible" do |ansible|
+        ansible.playbook = "../base.yml"
+      end
+
+      vmconfig.vm.provision "mount", type: "ansible" do |ansible|
+        ansible.playbook = "mount_couchbase.yml"
+      end
+
+      vmconfig.vm.provision "install_couchbase", type: "ansible" do |ansible|
+        ansible.playbook = "install_couchbase.yml"
+      end
+
+      vmconfig.vm.provision "configure_couchbase", type: "ansible" do |ansible|
+        ansible.playbook = "configure_couchbase.yml"
+        ansible.extra_vars = {
+          services: machine[:services],
+        }
+      end
+
+      vmconfig.vm.provision "index_couchbase", type: "ansible" do |ansible|
+        ansible.playbook = "index_couchbase.yml"
+      end
+
+      #      vmconfig.vm.provision "settings", type: "ansible" do |ansible|
+      #        ansible.playbook = "settings.yml"
+      #      end 
+
+    end
+  end
+end

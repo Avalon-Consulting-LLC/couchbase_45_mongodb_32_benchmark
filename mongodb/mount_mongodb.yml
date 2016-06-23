@@ -1,0 +1,21 @@
+---
+- name: Mount drives for storage
+  hosts: all
+  sudo: yes
+  vars:
+    mapping: [
+      {"drive": "/dev/xvdb", "mount": "/data"},
+      {"drive": "/dev/xvdc", "mount": "/db"}
+    ]
+  tasks:
+  - name: Create file system for drives
+    filesystem: fstype=ext4 dev={{ item.drive }}
+    with_items: mapping
+
+  - name: Create mount directories
+    file: path=/{{ item.mount }} state=directory mode=0777
+    with_items: mapping
+
+  - name: Mount drvies
+    mount: name={{ item.mount }} src={{ item.drive }} fstype=ext4 state=mounted
+    with_items: mapping

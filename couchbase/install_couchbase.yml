@@ -1,0 +1,36 @@
+---
+- name: Install Couchbase
+  hosts: all
+  become_method: sudo
+  vars:
+    couchbase_repository: http://packages.couchbase.com/releases/4.5.0-beta
+    couchbase_rpm: couchbase-server-enterprise-4.5.0-2151-centos6.x86_64.rpm
+    couchbase_port: 8091
+  tasks:
+  - name: Download Couchbase RPM
+    become: yes
+    get_url: url={{ couchbase_repository | quote }}/{{ couchbase_rpm | quote}} dest=/opt
+
+  - name: Install current Couchbase RPM
+    become: yes
+    yum: name=/opt/{{ couchbase_rpm | quote }} state=present
+
+  - name: Wait for Couchbase initilization
+    wait_for: port={{ couchbase_port }} delay=2
+
+  - name: Update init script with numactl
+    become: yes
+    replace: 
+      dest=/etc/init.d/couchbase-server
+      regexp='daemon --user couchbase ".DAEMON"'
+      replace='daemon --user couchbase "numactl --interleave=all $DAEMON"'
+
+  - name: Restart Couchbase Server
+    become: yes
+    service: name=couchbase-server state=restarted
+
+  - name: Wait for Couchbase initilization
+    wait_for: port={{ couchbase_port }} delay=2
+
+  - name: Copy iPerf scripts
+    copy: src=../iperf3YCSBtoServerTest.sh dest=/opt mode=0755

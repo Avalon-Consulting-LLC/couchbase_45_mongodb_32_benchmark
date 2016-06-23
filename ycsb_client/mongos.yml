@@ -1,0 +1,30 @@
+---
+- name: Install a mongos and mongoshell
+  hosts: all
+  sudo: yes
+  vars: 
+    mongos_port: 27021
+    mongos_logpath: /var/log/mongodb/mongos.log
+  tasks:
+  - name: Create mongodb log dir
+    file: path=/var/log/mongodb state=directory
+
+  - name: Add MongoDB repo file
+    copy: src=../mongodb/resources/template.mongodb-org-3.2.repo dest=/etc/yum.repos.d/mongodb-org-3.2.repo
+
+  - name: Install mongos and shell
+    yum: name={{ item }} state=latest
+    with_items:
+    - mongodb-org-mongos
+    - mongodb-org-shell
+
+  - name: Start mongos instance
+    shell: numactl --interleave=all mongos
+      --configdb {{ mongos_config }}
+      --port {{ mongos_port }}
+      --logpath {{ mongos_logpath }}
+      --fork
+      >> start_mongos.log
+    args:
+      creates: start_mongos.log
+    ignore_errors: true

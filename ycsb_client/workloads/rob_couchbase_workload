@@ -1,0 +1,22 @@
+# Workload Simple: small, read-focused workload
+#   Read/update ratio: 80/20
+#   Default data size: 1 KB records (12 fields, 32 bytes each, plus key)
+#   Request distribution: zipfian
+
+
+
+# Data model settings
+fieldcount=12
+fieldlength=32
+dataintegrity=true
+recordcount=100000000
+
+# Insertion settings
+insertorder=ordered
+workload=com.yahoo.ycsb.workloads.CoreWorkload
+threadcount=100
+
+# Connection settings
+couchbase.url=ec2-52-89-15-25.us-west-2.compute.amazonaws.com
+couchbase.bucket=usertable
+

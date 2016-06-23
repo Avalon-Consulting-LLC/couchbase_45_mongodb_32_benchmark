@@ -1,0 +1,192 @@
+---
+- name: Configure Couchbase
+  hosts: all
+  become_method: sudo
+  vars:
+    couchbase_repository: http://packages.couchbase.com/releases/4.5.0-beta
+    couchbase_rpm: couchbase-server-enterprise-4.5.0-2151-centos6.x86_64.rpm
+    couchbase_port: 8091
+    couchbase_username: couchbase
+    couchbase_password: couchbase
+    couchbase_bucket: usertable
+    couchbase_replicas: 2
+    data_ramsize: 18432
+    index_ramsize: 34816
+    master_hostname: data1
+    rebalance_hostname: data6
+  tasks:
+  - name: Make sure data and index dirs are writable
+    become: yes
+    file: path=/{{ item }} state=directory owner=couchbase
+    with_items:
+    - data
+    - index
+
+# Setup Services
+#curl -u couchbase:couchbase -X POST \
+#http://127.0.0.1:8091/node/controller/setupServices \
+#-d 'services=kv%2Cn1ql%2Cindex'
+
+  - name: First Node Init - Setup Services
+    become: yes
+    shell: curl
+      -u {{ couchbase_username }}:{{ couchbase_password }}
+      -X POST http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8091/node/controller/setupServices
+      -d 'services=kv%2Cn1ql%2Cindex'
+      >> first_init_node-setupServices.log
+    args:
+      creates: first_init_node-setupServices.log
+    when: inventory_hostname == master_hostname
+
+
+# Initialize Node with /couchbase for index and data path
+#curl -i -u couchbase:couchbase -X POST \
+#http://127.0.0.1:8091/nodes/self/controller/settings \
+#-d 'path=%2Fcouchbase&index_path=%2Fcouchbase'
+
+  - name: First Node Init - Initialize Node with /index for index and /data data path
+    become: yes
+    shell: curl
+      -i
+      -u {{ couchbase_username }}:{{ couchbase_password }}
+      -X POST http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8091/nodes/self/controller/settings
+      -d 'path=%2Fdata&index_path=%2Findex'
+      >> first_init_node-initializeNode.log
+    args:
+      creates: first_init_node-initializeNode.log
+    when: inventory_hostname == master_hostname
+
+# Setup Administrator username and password
+#curl -X POST \
+#http://127.0.0.1:8091/settings/web \
+#-d 'password=password&username=Administrator&port=SAME'
+
+  - name: First Node Init - Setup Administrator username and password
+    become: yes
+    shell: curl
+      -X POST http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8091/settings/web
+      -d 'password={{ couchbase_password }}&username={{ couchbase_username }}&port=SAME'
+      >> first_init_node-setupAdminUserPass.log
+    args:
+      creates: first_init_node-setupAdminUserPass.log
+    when: inventory_hostname == master_hostname
+
+# Setup Memory Optimized Indexes
+#curl -u couchbase:couchbase -X POST \
+#http://127.0.0.1:8091/settings/indexes \
+#-d 'storageMode=memory_optimized'
+
+  - name: First Node Init - Setup Memory Optimized Indexes
+    become: yes
+    shell: curl
+      -u {{ couchbase_username }}:{{ couchbase_password }}
+      -X POST http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8091/settings/indexes
+      -d 'storageMode=memory_optimized'
+      >> first_init_node-setupMemoryOptimizedIndexes.log
+    args:
+      creates: first_init_node-setupMemoryOptimizedIndexes.log
+    when: inventory_hostname == master_hostname
+
+# Setup Index RAM Quota
+#curl -u couchbase:couchbase -X POST  \
+#http://127.0.0.1:8091/pools/default \
+#-d 'memoryQuota=18432' -d 'indexMemoryQuota=34816'
+
+  - name: First Node Init - Setup Index RAM Quota
+    become: yes
+    shell: curl
+      -u {{ couchbase_username }}:{{ couchbase_password }}
+      -X POST http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8091/pools/default
+      -d 'memoryQuota=18432' -d 'indexMemoryQuota=34816'
+      >> first_init_node-setupIndexQuota.log
+    args:
+      creates: first_init_node-setupIndexQuota.log
+    when: inventory_hostname == master_hostname
+
+# Setup Bucket
+#curl -u couchbase:couchbase -X POST \
+#http://127.0.0.1:8091/pools/default/buckets \
+#-d 'flushEnabled=1&replicaIndex=0&replicaNumber=1&ramQuotaMB=18432&bucketType=membase&name=default&authType=sasl&saslPassword='
+
+  - name: First Node Init - Setup Bucket
+    become: yes
+    shell: curl
+      -u {{ couchbase_username }}:{{ couchbase_password }}
+      -X POST http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8091/pools/default/buckets
+      -d 'flushEnabled=1&replicaIndex=0&replicaNumber=1&ramQuotaMB=18432&bucketType=membase&name=default&authType=sasl&saslPassword='
+      >> first_init_node-setupBucket.log
+    args:
+      creates: first_init_node-setupBucket.log
+    when: inventory_hostname == master_hostname
+
+#  - name: Init node
+#    become: yes
+#    shell: /opt/couchbase/bin/couchbase-cli node-init
+#      -c {{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8091
+#      -u {{ couchbase_username }}
+#      -p {{ couchbase_password }}
+#      --node-init-hostname={{ hostvars[inventory_hostname]["ansible_ssh_host"] }}
+#      --node-init-data-path=/data
+#      --node-init-index-path=/index
+#      >> init_node.log
+#    args:
+#      creates: init_node.log
+
+  - name: Initialize Cluster
+    become: yes
+    shell: /opt/couchbase/bin/couchbase-cli cluster-init 
+      -c {{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:{{ couchbase_port }}
+      -u {{ couchbase_username }} 
+      -p {{ couchbase_password }} 
+      --cluster-init-username={{ couchbase_username }} 
+      --cluster-init-password={{ couchbase_password }} 
+      --cluster-init-port={{ couchbase_port }} 
+      --cluster-init-ramsize={{ data_ramsize }} 
+      --cluster-index-ramsize={{ index_ramsize }} 
+      --services={{ services }}
+      >> init_cluster.log
+    args:
+      creates: init_cluster.log
+    when: inventory_hostname == master_hostname
+
+  - name: Add Server
+    become: yes
+    shell: /opt/couchbase/bin/couchbase-cli server-add 
+      -c {{ hostvars[master_hostname]["ansible_ssh_host"] }}:{{ couchbase_port }} 
+      -u {{ couchbase_username}} 
+      -p {{ couchbase_password }} 
+      --server-add={{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:{{ couchbase_port }} 
+      --server-add-username={{ couchbase_username }} 
+      --server-add-password={{ couchbase_password }}
+      --services={{ services }}
+      >> add_server.log
+    args:
+      creates: add_server.log
+    when: inventory_hostname != master_hostname
+
+  - name: Rebalance Cluster
+    become: yes
+    shell: /opt/couchbase/bin/couchbase-cli rebalance 
+      -c {{ hostvars[master_hostname]["ansible_ssh_host"] }}:{{couchbase_port}} 
+      -u {{ couchbase_username }} 
+      -p {{ couchbase_password }}
+      >> rebalance.log
+    args:
+      creates: rebalance.log
+    when: inventory_hostname == rebalance_hostname
+
+  - name: Create user bucket
+    become: yes
+    shell: /opt/couchbase/bin/couchbase-cli bucket-create
+      -c {{ hostvars[master_hostname]["ansible_ssh_host"] }}:{{couchbase_port}}
+      -u {{ couchbase_username }}
+      -p {{ couchbase_password }}
+      --bucket={{ couchbase_bucket }}
+      --bucket-type=couchbase
+      --bucket-ramsize={{ data_ramsize }}
+      --bucket-replica={{ couchbase_replicas }}
+      --wait
+      >> create_bucket.log
+    args:
+      creates: create_bucket.log
+    when: inventory_hostname == rebalance_hostname

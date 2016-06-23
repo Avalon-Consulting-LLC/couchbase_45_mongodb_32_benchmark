@@ -1,0 +1,105 @@
+# -*- mode: ruby -*-
+# # vi: set ft=ruby :
+
+require 'yaml'
+
+settings = YAML.load_file '../private_settings.yml'
+machines = 9
+
+Vagrant.configure(2) do |config|
+  config.ssh.insert_key = false
+
+  if Vagrant.has_plugin?("vagrant-cachier")
+    config.cache.scope = :machine
+  end
+
+  # key is id of repset primary, rep1 and rep2 are machine ids of secondarys for primary
+  # primary will go to 27017 com
+  # rep1 will go to 27018
+  # rep2 will go to 27019
+  repsets = Hash.new
+
+  (1..machines).each do |i|
+       repsets[i] = {
+      :rep1 => (i + 1 <= machines ? i + 1 : i + 1 - machines),
+      :rep2 => (i + 2 <= machines ? i + 2 : i + 2 - machines)
+    }
+  end
+  
+  (1..machines).each do |i|
+    name = "server" + i.to_s
+    # servers are repset id and member of mongod process on this particular machine
+    servers = [
+      {:port => 27017, :id => i.to_s, :member => 1},
+      {:port => 27018, :id => (i - 1 > 0 ? i - 1 : i - 1 + machines).to_s, :member => 2},
+      {:port => 27019, :id => (i - 2 > 0 ? i - 2 : i - 2 + machines).to_s, :member => 3}
+    ]
+    
+    config.vm.define name do |vmconfig|
+      vmconfig.vm.provider "aws" do |aws, override|
+        aws.access_key_id = settings["aws"]["access_key_id"]
+        aws.secret_access_key = settings["aws"]["secret_access_key"]
+        aws.subnet_id = settings["aws"]["subnet_id"] 
+        aws.region = settings["benchmark"]["aws_region"]
+        aws.availability_zone = settings["benchmark"]["aws_availability_zone"]
+        aws.keypair_name = settings["benchmark"]["keypairname"]
+        aws.security_groups =  settings["benchmark"]["secgroups"]
+
+        aws.ssh_host_attribute = :dns_name
+
+        aws.ami = settings["benchmark"]["db_ami"]
+        aws.instance_type = settings["benchmark"]["db_size"]
+
+        aws.block_device_mapping = [
+          {
+            "DeviceName" => "/dev/sda1",
+            "Ebs.DeleteOnTermination" => true,
+            'Ebs.VolumeSize' => 40
+          },
+          {
+            "DeviceName" => "/dev/sdb",
+            "VirtualName" => "ephemeral0",
+            'Ebs.DeleteOnTermination' => true,
+            'Ebs.VolumeSize' => 320
+          },
+          {
+            "DeviceName" => "/dev/sdc",
+            "VirtualName" => "ephemeral1",
+            'Ebs.DeleteOnTermination' => true,
+            'Ebs.VolumeSize' => 320
+          }
+        ]
+
+        aws.tags = {
+          'Name' => name,
+          'Type' => 'MongoDB'
+	      }
+
+        override.vm.box = "dummy"
+        override.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
+        override.ssh.username = settings["ssh"]["username"]
+        override.ssh.private_key_path = settings["ssh"]["private_key_path"]
+      end
+      
+      vmconfig.vm.provision "base", type: "ansible" do |ansible|
+        ansible.playbook = "../base.yml"
+      end
+
+      vmconfig.vm.provision "mount", type: "ansible" do |ansible|
+        ansible.playbook = "mount_mongodb.yml"
+      end
+
+      vmconfig.vm.provision "mongodb", type: "ansible" do |ansible|
+        ansible.playbook = "mongodb.yml"
+        ansible.extra_vars = {
+	        config: i <= 3,
+          servers: servers,
+	        machines: machines,
+	        id_list: (1..machines).to_a,
+	        isLast: i == machines,
+	        repsets: repsets
+        }
+      end
+    end
+  end
+end

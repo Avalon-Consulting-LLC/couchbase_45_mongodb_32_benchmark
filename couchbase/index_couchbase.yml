@@ -1,0 +1,39 @@
+---
+- name: Create Couchbase Indexes
+  hosts: all
+  become_method: sudo
+  vars:
+    rebalance_hostname: "data6"
+  tasks:
+  - name: Create primary index
+    become: yes
+    uri: url=http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8093/query/service
+      user=couchbase
+      password=couchbase
+      method=POST
+      body='CREATE PRIMARY INDEX ON usertable USING GSI'
+      status_code=200
+    when: inventory_hostname == rebalance_hostname
+ 
+  - name: Create indexes
+    become: yes
+    uri: url=http://{{ hostvars[inventory_hostname]["ansible_ssh_host"] }}:8093/query/service
+      user=couchbase
+      password=couchbase
+      method=POST
+      body='CREATE INDEX {{ item.name }} ON usertable({{ item.name }}) USING GSI WITH {"nodes":"{{ hostvars[item.node]["ansible_ssh_host"] }}:8091"}'
+      status_code=200
+    with_items:
+    - { name: 'field0', node: 'data1' }
+    - { name: 'field1', node: 'data1' }
+    - { name: 'field2', node: 'data2' }
+    - { name: 'field3', node: 'data2' }
+    - { name: 'field4', node: 'data3' }
+    - { name: 'field5', node: 'data3' }
+    - { name: 'field6', node: 'data4' }
+    - { name: 'field7', node: 'data4' }
+    - { name: 'field8', node: 'data5' }
+    - { name: 'field9', node: 'data5' }
+    - { name: 'field10', node: 'data6' }
+    - { name: 'field11', node: 'data6' }
+    when: inventory_hostname == rebalance_hostname 

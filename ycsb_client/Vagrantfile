@@ -1,0 +1,75 @@
+# -*- mode: ruby -*-
+# # vi: set ft=ruby :
+
+require 'yaml'
+
+settings = YAML.load_file '../private_settings.yml'
+machines = 14
+
+Vagrant.configure(2) do |config|
+  config.ssh.insert_key = false
+
+  if Vagrant.has_plugin?("vagrant-cachier")
+    config.cache.scope = :machine
+  end
+
+  (1..machines).each do |i|
+    config.vm.define "ycsb"+i.to_s do |vmconfig|
+      vmconfig.vm.provider "aws" do |aws, override|
+        aws.access_key_id = settings["aws"]["access_key_id"]
+        aws.secret_access_key = settings["aws"]["secret_access_key"]
+
+        aws.region = settings["benchmark"]["aws_region"]
+        aws.availability_zone = settings["benchmark"]["aws_availability_zone"]
+        aws.keypair_name = settings["benchmark"]["keypairname"]
+        aws.security_groups =  settings["benchmark"]["secgroups"]
+        aws.subnet_id = settings["aws"]["subnet_id"]
+        aws.ssh_host_attribute = :dns_name
+        
+        aws.ami =  settings["benchmark"]["ycsb_ami"]
+        aws.instance_type = settings["benchmark"]["ycsb_instance_type"]
+        
+        aws.block_device_mapping = [{
+          "DeviceName" => "/dev/sda1",
+          "Ebs.DeleteOnTermination" => true
+        }]
+        aws.tags = {
+          'Name' => "ycsb" + i.to_s,
+          'Type' => 'YCSB'
+        }
+        override.vm.box = "dummy"
+        override.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
+        override.ssh.username = settings["ssh"]["username"]
+        override.ssh.private_key_path = settings["ssh"]["private_key_path"]
+      end
+ 
+      vmconfig.vm.provision "base", type: "ansible" do |ansible|
+        ansible.playbook = "../base.yml"
+      end
+
+# Using a customized YCSB client so commenting this section out.
+=begin
+      vmconfig.vm.provision "ycsb", type: "ansible" do |ansible|
+        ansible.playbook = "ycsb.yml"
+      end
+=end       
+
+      # The mongos provision is ONLY REQUIRED when testing MongoDB
+=begin
+      vmconfig.vm.provision "mongos", type: "ansible" do |ansible|
+        ansible.playbook = "mongos.yml"
+        ansible.extra_vars = {
+	        mongos_config: "ec2-52-40-15-29.us-west-2.compute.amazonaws.com:27020,ec2-52-25-49-75.us-west-2.compute.amazonaws.com:27020,ec2-52-40-69-158.us-west-2.compute.amazonaws.com:27020,ec2-52-40-69-194.us-west-2.compute.amazonaws.com:27020,ec2-52-32-54-91.us-west-2.compute.amazonaws.com:27020,ec2-52-40-70-107.us-west-2.compute.amazonaws.com:27020,ec2-52-40-70-241.us-west-2.compute.amazonaws.com:27020,ec2-52-40-70-207.us-west-2.compute.amazonaws.com:27020,ec2-52-39-194-57.us-west-2.compute.amazonaws.com:27020"
+	      }
+      end
+=end       
+      
+      # Setup the YCSB client
+      vmconfig.vm.provision "shell", path: "setup_client_local.sh"
+
+      # Install iPerf3 testing required software
+      vmconfig.vm.provision "shell", path: "setupIperf3Testing.sh"
+
+    end
+  end
+end

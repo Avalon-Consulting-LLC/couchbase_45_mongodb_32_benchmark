@@ -1,0 +1,22 @@
+---
+- name: Install YCSB
+  hosts: all
+  sudo: yes
+  tasks:
+  - name: Install deps
+    yum: name={{ item }} state=present
+    with_items:
+    - epel-release
+    - java-1.8.0-openjdk.x86_64
+
+  - name: Install argparse
+    easy_install: name=argparse
+
+  - name: Remove all other YCSB distros
+    file: path='/opt/ycsb*' state=absent
+
+  - name: Get YCSB
+    get_url: url=https://github.com/brianfrankcooper/YCSB/releases/download/0.9.0/ycsb-0.9.0.tar.gz dest=/opt
+  
+  - name: Unpack YCSB
+    unarchive: src=/opt/ycsb-0.9.0.tar.gz dest=/opt copy=no
