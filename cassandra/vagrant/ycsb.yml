@@ -1,0 +1,36 @@
+---
+# YCSB Installation Playbook
+
+- name: Setup Vagrant deps
+  hosts:
+    - ycsb
+  vars:
+    - dependency_dir: /vagrant/deps
+    - java_package: jdk-8u111-linux-x64.rpm
+    - miniconda_installer: Miniconda2-latest-Linux-x86_64.sh
+    - ycsb_package: ycsb-0.11.0.tar.gz
+  tasks:
+    - include: vagrant_deps_setup.yml
+
+    - name: Check YCSB existance
+      stat: path="{{dependency_dir}}/{{ycsb_package}}"
+      register: ycsb_dep
+
+    - name: Copy YCSB
+      copy:
+        remote_src=True
+        src="{{dependency_dir}}/{{ycsb_package}}"
+        dest=/tmp/{{ycsb_package}}
+      when: ycsb_dep.stat.exists
+
+- name: YCSB installation
+  hosts:
+    - ycsb
+  become: true
+  vars:
+    miniconda_ver: latest
+    miniconda_make_sys_default: true
+  roles:
+    - java
+    - python-miniconda
+    - ycsb

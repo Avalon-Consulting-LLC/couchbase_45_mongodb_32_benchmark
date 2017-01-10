@@ -1,0 +1,18 @@
+---
+
+- name: Check JDK package existance
+  stat: path=/tmp/{{java_oracle_rpm}}
+  register: java_dep
+
+- name: Download RPM
+  become: yes
+  become_user: root
+  command: 'wget -nc --no-cookies --no-check-certificate --header "Cookie: oraclelicense=accept-securebackup-cookie" {{java_oracle_url}} -O /tmp/{{java_oracle_rpm}}'
+  args:
+    creates: /tmp/{{java_oracle_rpm}}
+  when: java_dep.stat.exists == false
+
+- name: Install RPM
+  become: yes
+  become_user: root
+  package: name=/tmp/{{java_oracle_rpm}} state=present

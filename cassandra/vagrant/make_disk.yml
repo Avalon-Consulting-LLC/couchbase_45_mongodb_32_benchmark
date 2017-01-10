@@ -1,0 +1,21 @@
+---
+# Playbook to partition and mount a disk
+# Variables
+# - device - e.g. /dev/sda
+# - mountpount - e.g. /mnt/dir
+
+- file:
+    path: "{{ mountpoint }}"
+    state: directory
+    recurse: yes
+    mode: 0777
+
+- filesystem:
+    fstype: ext4
+    dev: "{{ device }}"
+
+- mount:
+    name: "{{ mountpoint }}"
+    src: "{{ device }}"
+    fstype: ext4
+    state: present

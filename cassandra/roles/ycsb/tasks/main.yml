@@ -1,0 +1,30 @@
+---
+# YSCB tasks
+
+- name: Create YCSB home directory
+  file: path={{ ycsb_home }} state=directory mode=0777
+
+- name: Stat YCSB Vagrant dep
+  stat: path=/vagrant/deps/ycsb-{{ ycsb_version }}.tar.gz
+  register: ycsb_dep
+
+- name: Download YCSB
+  command: 'wget -nc --no-cookies --no-check-certificate {{ ycsb_url }} -O /tmp/{{ycsb_package}}'
+  args:
+    creates: /tmp/{{ycsb_package}}
+  when: ycsb_dep.stat.exists == false
+
+- name: Extract YCSB
+  become: true
+  become_user: root
+  command: tar xzf /tmp/{{ycsb_package}} -C {{ ycsb_home }} --strip-components=1
+
+- name: set YCSB_HOME
+  become: true
+  become_user: root
+  with_items:
+    - etc/profile.d/ycsb.sh
+  template: >
+    src={{item}}.j2
+    dest=/{{item}}
+    mode=0644

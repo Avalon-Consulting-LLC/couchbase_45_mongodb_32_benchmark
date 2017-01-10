@@ -1,0 +1,7 @@
+---
+java_openjdk_pkg: 'java-1.{{java_ver}}.{{java_minor_ver}}-openjdk{% if java_jdk_or_jre == "jdk" %}-devel{% endif %}'
+
+java_oracle_rpm: '{{java_jdk_or_jre}}-{{java_ver}}u{{java_patch_ver}}-{{java_platform}}.rpm'
+java_oracle_url: 'http://download.oracle.com/otn-pub/java/jdk/{{java_ver}}u{{java_patch_ver}}-{{java_post_patch_ver}}/{{java_oracle_rpm}}'
+
+java_home: '{% if java_jdk_type == "oracle" %}/usr/java/{{java_jdk_or_jre}}1.{{java_ver}}.{{java_minor_ver}}_{{java_patch_ver}}{% else %}/usr/lib/jvm/java-1.{{java_ver}}.0-openjdk{% endif %}'

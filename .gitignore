@@ -1,0 +1,4 @@
+private_settings.yml
+datastax_credentials.yml
+modify-instance-attribute.log
+cassandra/vagrant/deps

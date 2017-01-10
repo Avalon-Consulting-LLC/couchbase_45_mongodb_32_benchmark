@@ -1,0 +1,4 @@
+---
+
+- include: el-oracle.yml
+  when: ansible_distribution == 'CentOS'

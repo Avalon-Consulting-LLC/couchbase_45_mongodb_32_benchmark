@@ -1,0 +1,61 @@
+---
+# Documentation at https://docs.datastax.com/en/landing_page/doc/landing_page/recommendedSettingsLinux.html
+
+- name: TCP Settings
+  sysctl: name="{{ item.name }}" value="{{ item.value }}" state=present reload=yes
+  with_items:
+    - { name: 'net.core.rmem_max', value: '16777216' }
+    - { name: 'net.core.wmem_max', value: '16777216' }
+    - { name: 'net.core.rmem_default', value: '16777216' }
+    - { name: 'net.core.wmem_default', value: '16777216' }
+    - { name: 'net.core.optmem_max', value: '40960' }
+    - { name: 'net.ipv4.tcp_rmem', value: '4096 87380 16777216' }
+    - { name: 'net.ipv4.tcp_wmem', value: '4096 65536 16777216' }
+
+# - name: Set sysctl.conf
+#   become: true
+#   command: sysctl -p /etc/sysctl.conf
+
+# Optimize SSDs
+- include: optimize_ssd.yml device=sda
+
+- include: optimize_ssd.yml device=xvda
+- include: optimize_ssd.yml device=xvdb
+- include: optimize_ssd.yml device=xvdc
+
+- name: Disable zone_reclaim_mode on NUMA systems
+  become: true
+  become_user: root
+  shell: echo 0 | sudo tee /proc/sys/vm/zone_reclaim_mode > /dev/null
+
+- name: Set cassandra user resource limits
+  vars:
+    cassandra_user: cassandra
+  lineinfile:
+    dest=/etc/security/limits.d/cassandra.conf
+    line="{{ cassandra_user }} {{ item }}"
+  with_items:
+    - "- memlock unlimited"
+    - "- nofile 100000"
+    - "- nproc 32768"
+    - "- as unlimited"
+
+- name: Set the nproc limits for RedHat 6.x
+  vars:
+    cassandra_user: cassandra
+  lineinfile:
+    dest=/etc/security/limits.d/90-nproc.conf
+    line="{{ cassandra_user }} - nproc 32768"
+  when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '6'
+
+- name: Set vm.max_map_count
+  sysctl: name="vm.max_map_count" value="1048575" state=present reload=yes
+
+# - name: Set sysctl.conf
+#   become: true
+#   command: sysctl -p /etc/sysctl.conf
+
+- name: Swapoff
+  become: true
+  become_user: root
+  command: swapoff --all

@@ -1,0 +1,41 @@
+---
+
+# Gather Node IP addresses
+- name: Set default private IP to primary_ip
+  set_fact: private_ip="{{ primary_ip }}"
+
+- action: ec2_facts
+
+- debug: var=ec2
+- debug: var=ansible_ec2_public_key
+
+# - name: Set non-EC2 fact
+#   set_fact: deployment_environment="local"
+#   when: "{{ ansible_ec2_public_key|from_json }} is None"
+
+- debug: var=deployment_environment
+
+# Gather Node IP and hostname
+- name: Set private IP var (AWS)
+  set_fact: private_ip="{{ ansible_default_ipv4.address  }}"
+  when: deployment_environment == "aws"
+
+- name: Set private hostname var (AWS)
+  set_fact: private_hostname="{{ ansible_hostname }}"
+  when: deployment_environment == "aws"
+
+- debug: var=private_ip
+- debug: var=private_hostname
+
+# Build Cluster Seeds
+- name: Template seed list
+  template: src=seeds.j2 dest=/tmp/seed_list mode=0664
+
+- name: Load seed list
+  shell: cat /tmp/seed_list
+  register: seed_list
+
+- name: Set seeds fact
+  set_fact: seeds={{ seed_list.stdout }}
+
+- debug: var=seeds

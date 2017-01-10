@@ -1,0 +1,7 @@
+---
+
+- name: Source local settings
+  command: /bin/bash /etc/rc.local
+
+- name: Source profile
+  command: source /etc/profile

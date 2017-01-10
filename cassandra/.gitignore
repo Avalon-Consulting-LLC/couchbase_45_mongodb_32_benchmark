@@ -1,0 +1,17 @@
+
+# Created by https://www.gitignore.io/api/osx,vagrant
+
+### OSX ###
+*.DS_Store
+
+### Vagrant ###
+.vagrant/
+
+### Ansible ###
+*.retry
+
+# Installer tarballs
+files/*.tar.gz
+
+
+datastax_credentials.yml

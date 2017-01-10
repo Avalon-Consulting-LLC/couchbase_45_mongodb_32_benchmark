@@ -1,0 +1,16 @@
+---
+# Base installation playbook
+
+- name: Base installation
+  hosts:
+    - all
+  become: true
+  roles:
+    - common
+    - benchmark
+
+- include: cassandra.yml
+- include: ycsb.yml
+
+# Benchmark setup - load schema and workload into database
+# - include:

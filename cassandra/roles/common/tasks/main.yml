@@ -1,0 +1,65 @@
+---
+- name: Gather OS-family variables
+  include_vars: "{{ item }}"
+  with_first_found:
+    - "{{ ansible_os_family }}-{{ ansible_distribution_major_version }}.yml"
+    - "{{ ansible_distribution }}.yml"
+
+# Base installation packages
+- name: Install essentials
+  package: name={{ item }} state=present update_cache=yes
+  with_items:
+  - libselinux-python
+  - openssl
+  - wget
+  - ntp
+  - numactl
+
+# General configs
+- name: Fix /etc/hosts
+  lineinfile:
+    dest=/etc/hosts
+    regexp='^127\.0\.0\.1'
+    line='127.0.0.1   localhost localhost.localdomain localhost4 localhost4.localdomain4'
+    owner=root group=root mode=0644
+
+- name: Enable NTPD
+  service: name=ntpd state=started enabled=yes
+
+- name: Turn down swapiness
+  sysctl: name=vm.swappiness value=0 state=present
+  ignore_errors: true
+
+- name: Disable Transparent Huge Pages (1/2)
+  lineinfile:
+    dest=/etc/rc.local
+    line="for i in /sys/kernel/mm/*transparent_hugepage/{{ item }}; do echo never > $i; done"
+  when: ansible_distribution_version != "12.04"
+  notify: Source local settings
+  with_items: [ 'enabled', 'defrag' ]
+
+- name: Disable Transparent Huge Pages (2/2)
+  shell: for i in /sys/kernel/mm/*transparent_hugepage/enabled; do echo never > $i; done
+  when: ansible_distribution_version != "12.04"
+  notify: Source local settings
+
+- name: Enable more open files
+  lineinfile: dest=/etc/security/limits.conf
+    line='* - nofile 65536'
+
+- name: Disable NUMA
+  become: yes
+  sysctl: name=vm.zone_reclaim_mode value=0 state=present
+  ignore_errors: true
+
+- name: Disable firewall
+  service: name={{ firewall_service }} state=stopped enabled=no
+
+# These are mostly RedHat-specific
+- name: Disable SELINUX
+  selinux: state=disabled
+  when: ansible_os_family == 'RedHat'
+
+- name: upgrade all packages
+  yum: name=* state=latest
+  when: upgrade_packages and ansible_os_family == 'RedHat'

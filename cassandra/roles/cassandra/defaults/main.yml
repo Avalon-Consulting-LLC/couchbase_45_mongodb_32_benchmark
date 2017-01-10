@@ -1,0 +1,33 @@
+---
+cassandra_home: /etc/cassandra
+cassandra_config_dir: "{{ cassandra_home }}/conf"
+cassandra_log_dir: /var/log/cassandra
+cassandra_storage_dir: /var/lib/cassandra
+
+cluster_name: cassandra_cluster_1
+num_tokens: 128
+
+seeds: localhost
+listen_address: localhost
+
+cassandra_install_version: dsc
+
+cassandra_data_dirs: # []
+  - "{{ cassandra_storage_dir }}/data"
+  # - "{{ cassandra_storage_dir }}/data2"
+cassandra_hints_dir: "{{ cassandra_storage_dir }}/hints"
+cassandra_commitlog_dir: "{{ cassandra_storage_dir }}/commitlog"
+cassandra_savedcache_dir: "{{ cassandra_storage_dir }}/saved_caches"
+
+cassandra_thift_port: 9160
+cassandra_storage_port: 7000
+cassandra_ssl_storage_port: 7001
+cassandra_jmx_port: 7199
+
+cassandra_snitch: SimpleSnitch # TODO: Look into Ec2Snitch
+dc: DC1
+rack: RAC1
+
+dc_suffix: '_1_cassandra'
+
+cassandra_instances_per_node: 1

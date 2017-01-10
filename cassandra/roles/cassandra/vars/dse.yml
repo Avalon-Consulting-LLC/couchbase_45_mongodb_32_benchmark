@@ -1,0 +1,6 @@
+---
+# Variables for Datastax Enterprise
+cassandra_service: dse
+
+dse_config_dir: /etc/dse
+cassandra_config_dir: "{{dse_config_dir}}/cassandra"

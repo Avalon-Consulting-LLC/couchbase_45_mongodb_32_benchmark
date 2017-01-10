@@ -101,7 +101,9 @@ fi
 # Main Processing
 # ------------------
 
+awsProfile=$AWS_DEFAULT_PROFILE
 echo ""
+logMsg "Using profile [" ${awsProfile} "]"
 logMsg "Enabling Enhanced Networking for [" ${howManyServers} "] servers in the AWS Region [" ${awsRegion} "] for server names that begin with [" ${serverNamePrefix} "] that are in the stopped state." 
 
 stateCode=80  # Valid state codes are 16 - running, 48 - terminated, 64 - stopping, 80 - stopped. 
@@ -109,8 +111,8 @@ i=${startWith}
 numOfServers=$(( ${i} + ${howManyServers} - 1 ))
 
 while [[ $i -le numOfServers ]]; do
-	currServerName=${serverNamePrefix}${i}
-	instanceID=`xmlsh -c "aws ec2 describe-instances --region ${awsRegion} | json2xml | xpath -s /*:object//*:member[@name='Value']/*:string[.='${currServerName}']/../../../../../*:member[@name='State']/*:object/*:member[@name='Code']/*:number[.='${stateCode}']/../../../../*:member[@name='InstanceId']/*:string"`
+    currServerName="${serverNamePrefix}$(printf '%02d' $i)"
+	instanceID=`xmlsh -c "aws ec2 describe-instances --region ${awsRegion} --profile ${awsProfile} | json2xml | xpath -s /*:object//*:member[@name='Value']/*:string[.='${currServerName}']/../../../../../*:member[@name='State']/*:object/*:member[@name='Code']/*:number[.='${stateCode}']/../../../../*:member[@name='InstanceId']/*:string"`
 
    `aws --debug --region ${awsRegion} ec2 modify-instance-attribute --instance-id ${instanceID} --sriov-net-support simple > modify-instance-attribute.log 2>&1`
 

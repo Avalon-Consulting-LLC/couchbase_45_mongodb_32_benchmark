@@ -1,0 +1,58 @@
+---
+
+# Clearing out system.log
+- name: Check for cassandra_config_dir existence
+  stat: path={{ cassandra_config_dir }}
+  register: cassandra_config_dir_state
+
+- name: Check Cassandra system.log existence
+  stat: path={{ cassandra_log_dir }}/system.log
+  register: system_log_file
+
+- name: Clear Cassandra system.log
+  when: system_log_file.stat.exists
+  shell: echo > {{ cassandra_log_dir }}/system.log
+
+# Template out configurations
+- name: Set Cassandra Snitch config
+  set_fact: cassandra_snitch = 'Ec2Snitch'
+  when: deployment_environment == "aws"
+
+- debug: var=cassandra_snitch
+
+# - name: Template configs
+#   template: src={{item.src}} dest={{item.dest}} mode=0664
+#   with_items:
+#     - { src: 'etc/default/dse.j2', dest: '/etc/default/dse' }
+#     - { src: 'etc/cassandra/conf/cassandra.yaml.j2', dest: '{{ cassandra_config_dir }}/cassandra.yaml' }
+#     - { src: 'etc/cassandra/conf/jvm.options.j2', dest: '{{ cassandra_config_dir }}/jvm.options' }
+    # - { src: 'etc/cassandra/conf/cassandra-env.sh.j2' dest: '{{ cassandra_config_dir }}/cassandra-env.sh' }
+    # - { src: 'etc/cassandra/conf/cassandra-rackdc.properties.j2' dest: '{{ cassandra_config_dir }}/cassandra-rackdc.properties' }
+    # - { src: 'etc/cassandra/conf/cassandra-topology.properties.j2' dest: '{{ cassandra_config_dir }}/cassandra-topology.properties' }
+
+- name: Template DSE node-type
+  when: cassandra_install_version == 'dse'
+  template:
+    src=etc/default/dse.j2
+    dest=/etc/default/dse
+
+- name: Template cassandra.yml
+  template:
+    src=etc/cassandra/conf/cassandra.yaml.j2
+    dest={{ cassandra_config_dir }}/cassandra.yaml
+    mode=0664
+
+- name: Template jvm.options
+  template:
+    src=etc/cassandra/conf/jvm.options.j2
+    dest={{ cassandra_config_dir }}/jvm.options
+    mode=0664
+
+- name: Template cassandra-env.sh
+  template: "src=etc/cassandra/conf/cassandra-env.sh.j2 dest={{ cassandra_config_dir }}/cassandra-env.sh mode=0664"
+
+- name: Template cassandra-rackdc.properties
+  template: "src=etc/cassandra/conf/cassandra-rackdc.properties.j2 dest={{ cassandra_config_dir }}/cassandra-rackdc.properties mode=0664"
+
+- name: Template cassandra-topology.properties
+  template: "src=etc/cassandra/conf/cassandra-topology.properties.j2 dest={{ cassandra_config_dir }}/cassandra-topology.properties mode=0664"

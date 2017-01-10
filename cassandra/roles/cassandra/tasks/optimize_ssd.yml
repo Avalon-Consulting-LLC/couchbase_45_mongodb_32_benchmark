@@ -1,0 +1,37 @@
+---
+# Needs var named 'device'
+# For example, 'device: sda' for /dev/sda
+
+- stat: path=/dev/{{device}}
+  register: disk
+
+- debug: msg="Optimizing /dev/{{ device }}"
+  when: disk.stat.exists
+
+- file:
+    path: /var/lock/subsys/local
+    state: touch
+  when: disk.stat.exists
+
+- name: Optimize SSD
+  when: disk.stat.exists
+  become: true
+  become_user: root
+  shell: "{{item}}"
+  with_items:
+    - echo deadline | sudo tee /sys/block/{{device}}/queue/scheduler > /dev/null
+    - echo 0 | sudo tee /sys/class/block/{{device}}/queue/rotational > /dev/null
+    - echo 8 | sudo tee /sys/class/block/{{device}}/queue/read_ahead_kb > /dev/null
+
+- name: Optimize SSD (rc.local)
+  when: disk.stat.exists
+  become: true
+  become_user: root
+  lineinfile:
+    dest=/etc/rc.local
+    line="{{ item }}"
+  with_items:
+    - echo deadline > /sys/block/{{device}}/queue/scheduler
+    - touch /var/lock/subsys/local
+    - echo 0 > /sys/class/block/{{device}}/queue/rotational
+    - echo 8 > /sys/class/block/{{device}}/queue/read_ahead_kb

@@ -1,0 +1,22 @@
+---
+
+- name: Install Datastax repo (DSE)
+  when: cassandra_install_version == 'dse'
+  yum_repository:
+    name: datastax
+    description: DataStax Repo for Apache Cassandra
+    baseurl: https://{{ dse_username|urlencode }}:{{ dse_password|urlencode }}@rpm.datastax.com/enterprise
+    enabled: yes
+    gpgcheck: yes
+    gpgkey: http://rpm.datastax.com/rpm/repo_key
+
+- name: Install Cassandra (DSE)
+  yum: name={{ item }} state=present
+  when: cassandra_install_version == 'dse'
+  register: cassandra_installed
+  with_items:
+    - dse-full
+
+- name: Set cassandra_config_dir fact (DSE)
+  when: cassandra_install_version == "dse"
+  set_fact: cassandra_config_dir=/etc/dse/cassandra

@@ -1,0 +1,4 @@
+---
+# Variables for Datastax Community
+cassandra_service: cassandra
+cassandra_config_dir: /etc/cassandra

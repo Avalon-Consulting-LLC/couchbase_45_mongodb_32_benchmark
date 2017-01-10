@@ -1,0 +1,8 @@
+---
+# YCSB variables
+
+ycsb_version: 0.11.0
+ycsb_package: ycsb-{{ ycsb_version }}.tar.gz
+ycsb_url: https://github.com/brianfrankcooper/YCSB/releases/download/{{ ycsb_version }}/{{ ycsb_package }}
+
+ycsb_home: /opt/ycsb

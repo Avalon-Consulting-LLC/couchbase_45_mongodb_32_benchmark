@@ -1,0 +1,48 @@
+---
+# tasks file for miniconda
+- name: download installer.sh
+  get_url: >
+    url="{{miniconda_installer_url}}"
+    dest=/tmp/{{miniconda_installer_sh}}
+    owner=root
+    group=root
+    mode=0755
+
+- name: installing conda
+  command: /tmp/{{miniconda_installer_sh}} -b -p /opt/{{miniconda_name}}
+  args:
+    creates: /opt/{{miniconda_name}}/bin/conda
+
+- name: deleting installer...
+  when: miniconda_cleanup
+  file:
+    path=/tmp/{{miniconda_installer_sh}}
+    state=absent
+
+- name: link miniconda...
+  file:
+    dest="{{ miniconda_home }}"
+    src=/opt/{{miniconda_name}}
+    state=link
+    owner=root
+    group=root
+
+- name: install additional packages...
+  command: '{{ miniconda_home }}/bin/conda install -y {{item}}'
+  with_items: '{{ miniconda_pkg_list }}'
+
+- name: conda updates
+  when: miniconda_update
+  command: '{{ miniconda_home }}/bin/conda update -y --all'
+
+# - name: remove conda-curl since it conflicts with the system curl
+#   command: '{{ miniconda_home }}/bin/conda remove -y curl'
+
+- name: make system default python etc...
+  when: miniconda_make_sys_default
+  template: >
+    src=etc/profile.d/miniconda.sh.j2
+    dest=/etc/profile.d/miniconda.sh
+    mode=0644
+    owner=root
+    group=root

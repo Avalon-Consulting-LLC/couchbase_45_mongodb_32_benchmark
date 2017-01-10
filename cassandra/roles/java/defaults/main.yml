@@ -1,0 +1,12 @@
+---
+java_ver : 8
+java_minor_ver : 0
+java_patch_ver: 111
+java_post_patch_ver: b14
+java_platform: linux-x64
+
+# oracle or openjdk
+java_jdk_type: oracle
+
+# jdk or jre
+java_jdk_or_jre: jdk

@@ -1,0 +1,243 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Require the AWS provider plugin and YAML module
+require 'vagrant-aws'
+require 'yaml'
+
+# Specify Vagrant version and Vagrant API version
+Vagrant.require_version '>= 1.7.0'
+VAGRANTFILE_API_VERSION = '2'
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'virtualbox'
+
+ansible_limit = (ENV['ANSIBLE_LIMIT'] || 'all')
+ansible_playbook = (ENV['ANSIBLE_PLAYBOOK'] || 'site.yml')
+
+databases = (ENV['CASSANDRA_NODES'] || 1).to_i
+clients = (ENV['YCSB_NODES'] || 1).to_i
+total_nodes = databases+clients
+
+subnet = "172.31.16" # Start of subnet
+deployment_env = 'aws'
+DEBUG = false
+
+# Variables for Virtualbox development
+VB_BOX = "bento/centos-6.7"
+
+# Variables for AWS
+settings = YAML.load_file '../../private_settings.yml'
+AWS_ACCESS = settings["aws"]["access_key_id"]
+AWS_SECRET = settings["aws"]["secret_access_key"]
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.ssh.insert_key = false
+
+  config.vm.synced_folder ".", "/vagrant", disabled: true
+  config.vm.synced_folder "./ycsb_data", "/vagrant/ycsb_data"
+  config.vm.synced_folder "./deps", "/vagrant/deps"
+
+  # Use dummy AWS box (override in provider configuration blocks)
+  config.vm.box = 'aws-dummy'
+  config.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
+
+  if Vagrant.has_plugin?("vagrant-hostmanager")
+    config.hostmanager.enabled = true
+    config.hostmanager.manage_host = true
+    config.hostmanager.ignore_private_ip = false
+    config.hostmanager.include_offline = true
+  end
+
+  if Vagrant.has_plugin?("vagrant-cachier")
+    config.cache.scope = :machine
+  end
+
+  # Configure default AWS provider settings
+  config.vm.provider 'aws' do |aws|
+    # Specify access/authentication information
+    aws.access_key_id = AWS_ACCESS
+    aws.secret_access_key = AWS_SECRET
+
+    # Specify default AWS key pair
+    aws.keypair_name = settings["benchmark"]["keypairname"]
+
+    # Specify default region
+    aws.region = settings["benchmark"]["aws_region"]
+    aws.availability_zone = settings["benchmark"]["aws_availability_zone"]
+
+    aws.placement_group = settings["benchmark"]["placementgroup"]
+  end # config.vm.provider 'aws'
+
+  ## Begin configuration for many machines
+  ## We just want many copies of the same setup
+  machines = Array.new  # Could also pre-declare to customize per-machine settings
+  hosts_vars = Hash.new
+
+  cassandra_instances_per_node = 2
+  subnet_start = 10
+
+  (1..total_nodes).each do |machine_id|
+    ips = Array.new
+
+    if machine_id > databases
+      node_type = "ycsb"
+      subnet_start = 50
+      ips.push( "#{subnet}.#{subnet_start + (machine_id - databases)}")
+    else
+      node_type = "cassandra"
+      (0...cassandra_instances_per_node).each do |instance|
+        ips.push("#{subnet}.#{subnet_start + (machine_id + instance)}")
+      end
+
+      subnet_start += (cassandra_instances_per_node - 1)
+    end
+
+    ### Gather variables for instances
+
+    ip_addr = ips[0]
+
+    # Groupings for provisoner
+    groups = Array[node_type]
+
+    # Hostname
+    machine_id_val = machine_id
+    if machine_id > databases
+      machine_id_val = machine_id - databases
+    end
+    short_name = node_type + machine_id_val.to_s.rjust(2, "0")
+
+    # Variables for provisioner
+    host_vars = Hash.new
+    if node_type == "cassandra"
+      host_vars["seed"] = (machine_id - 1) % 2 == 0
+    end
+
+    host_vars["primary_ip"] = ip_addr
+    host_vars["available_ips"] = ips.join(",")
+
+    ## Generic variables
+    machines.push({:name => short_name, :groups => groups })
+    hosts_vars[short_name] = host_vars # Used by Ansible
+
+    config.vm.define short_name do |vmconfig|
+      vmconfig.vm.hostname = short_name
+      vmconfig.vm.box_check_update = false
+
+      # Set per-machine AWS provider configuration/overrides
+      vmconfig.vm.provider 'aws' do |aws, override|
+        # AWS SSH Settings
+        aws.ssh_host_attribute = :dns_name
+        override.ssh.private_key_path = settings["ssh"]["private_key_path"]
+        override.ssh.username = settings["ssh"]["username"]
+
+        # Security Groups
+        aws.security_groups = settings["benchmark"]["secgroups"]
+
+        # If using a subnet
+        aws.subnet_id = settings["benchmark"]["aws_subnet"]
+        aws.associate_public_ip = true  # Need to set for non-default VPC
+        aws.private_ip_address = ip_addr # Make sure this is in the right subnet
+
+        # AWS Instance
+        if node_type == "cassandra"
+          aws.ami = settings["benchmark"]["db_ami"]
+          aws.instance_type = settings["benchmark"]["db_size"]
+
+          aws.block_device_mapping = [
+            {
+              "DeviceName" => "/dev/sda1",
+              'Ebs.VolumeSize' => 40,
+              'Ebs.VolumeType' => 'gp2',
+              "Ebs.DeleteOnTermination" => true,
+            },
+            {
+              "DeviceName" => "/dev/sdb",
+              "VirtualName" => "ephemeral0",
+              'Ebs.VolumeSize' => 320,
+              'Ebs.VolumeType' => 'gp2',
+              'Ebs.DeleteOnTermination' => true,
+            },
+            {
+              "DeviceName" => "/dev/sdc",
+              "VirtualName" => "ephemeral1",
+              'Ebs.VolumeSize' => 320,
+              'Ebs.VolumeType' => 'gp2',
+              'Ebs.DeleteOnTermination' => true,
+            }
+          ]
+
+        elsif node_type == "ycsb"
+          aws.ami = settings["benchmark"]["client_ami"]
+          aws.instance_type = settings["benchmark"]["client_size"]
+        end
+
+        aws.tags = {
+          'Name' => short_name,
+          'Type' => node_type
+        }
+      end # vmconfig.vm.provider 'aws'
+
+      # Set per-machine VirtualBox provider configuration/overrides
+      vmconfig.vm.provider 'virtualbox' do |vb, override|
+        override.vm.box = VB_BOX
+        override.vm.network :private_network, ip: ip_addr
+        vb.memory = 2048
+        vb.cpus = 2
+        if machine_id <= databases and databases == 1
+          vb.memory = 8192
+          vb.cpus = vb.cpus = `#{RbConfig::CONFIG['host_os'] =~ /darwin/ ? 'sysctl -n hw.ncpu' : 'nproc'}`.chomp
+        end
+      end # vmconfig.vm.provider 'virtualbox'
+
+      ## Provision once all nodes are started
+      if machine_id == total_nodes || ansible_limit != 'all'
+        vmconfig.vm.provision :ansible do |ansible|
+
+          ansible.limit = ansible_limit
+          ansible.playbook = ansible_playbook
+
+          ansible.groups = group_up(machines)
+          ansible.host_vars = hosts_vars
+
+          ansible.extra_vars = {
+            cassandra_instances_per_node: cassandra_instances_per_node,
+            deployment_environment: deployment_env, # TODO: Set provider specific
+            aws_access_key: AWS_ACCESS,
+            aws_secret_key: AWS_SECRET
+          }
+
+          if DEBUG
+            ansible.verbose = 'vv'
+            puts ansible.groups
+          end
+
+          puts "Set to provision in #{ansible.extra_vars[:deployment_environment]}"
+        end
+      end # end last machine
+    end # end config.vm
+  end # end (1..N).each
+end
+
+
+# Helper method to define machine groupings
+def group_up (machines)
+  groups = Hash.new
+  machines.each do |machine|
+    name = machine[:name]
+    machine[:groups].each do |group|
+      if !groups.has_key?(group)
+        groups[group] = Array.new
+      end
+      group_list = groups[group]
+      if !group_list.include?(name)
+        group_list.push(name)
+      end
+    end
+  end
+  all_groups = Array.new
+  groups.each do |k, v|
+     all_groups.push(k)
+  end
+  groups["all_groups:children"] = all_groups
+
+  return groups
+end

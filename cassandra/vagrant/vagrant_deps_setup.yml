@@ -1,0 +1,36 @@
+---
+# Declare these variables to names of files to check for
+# - dependency_dir
+# - java_package
+# - miniconda_installer
+# - ycsb_package
+
+- name: Check existance
+  stat: path="{{ dependency_dir }}"
+  register: deps
+
+- name: Create deps directory
+  file: path="{{ dependency_dir }}" state=directory
+  when: deps.stat.exists == false
+
+- name: Check JDK package existance
+  stat: path="{{dependency_dir}}/{{java_package}}"
+  register: java_dep
+
+- name: Copy JDK
+  copy:
+    remote_src=True
+    src="{{dependency_dir}}/{{java_package}}"
+    dest=/tmp/{{java_package}}
+  when: java_dep.stat.exists
+
+- name: Check Miniconda installer existance
+  stat: path="{{dependency_dir}}/{{miniconda_installer}}"
+  register: python_dep
+
+- name: Copy Miniconda installer
+  copy:
+    remote_src=True
+    src="{{dependency_dir}}/{{miniconda_installer}}"
+    dest=/tmp/{{miniconda_installer}}
+  when: python_dep.stat.exists

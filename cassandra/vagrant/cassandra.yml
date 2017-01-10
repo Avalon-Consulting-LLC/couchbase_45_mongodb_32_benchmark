@@ -1,0 +1,62 @@
+---
+# Cassandra Installation Playbook
+
+- name: Setup Vagrant deps
+  hosts:
+    - cassandra
+  vars:
+    - dependency_dir: /vagrant/deps
+    - java_package: jdk-8u111-linux-x64.rpm
+    - miniconda_installer: Miniconda2-latest-Linux-x86_64.sh
+  tasks:
+    - include: vagrant_deps_setup.yml
+
+- name: Mount disk 1
+  hosts:
+    - cassandra
+  become: true
+  become_user: root
+  vars:
+    device: /dev/xvdb
+    mountpoint: /cassandra1
+  tasks:
+    - name: Check for device
+      stat: path={{device}}
+      register: device1_fact
+
+    - include: make_disk.yml
+      when: device1_fact.stat.exists
+
+- name: Mount disk 2
+  hosts:
+    - cassandra
+  become: true
+  become_user: root
+  vars:
+    device: /dev/xvdc
+    mountpoint: /cassandra2
+  tasks:
+    - name: Check for device
+      stat: path={{device}}
+      register: device2_fact
+
+    - include: make_disk.yml
+      when: device2_fact.stat.exists
+
+- name: Cassandra installation
+  hosts:
+    - cassandra
+  become: true
+  vars:
+    - miniconda_ver: latest
+    - miniconda_make_sys_default: true
+    # - deployment_environment: aws  # Set to 'aws' to provision on cloud
+    - cassandra_snitch: GossipingPropertyFileSnitch
+    - cassandra_install_version: dse  # Remove or set to 'dsc' to install Community
+  # Need to create account with DataStax Enterprise
+  vars_files:
+    - [ datastax_credentials.yml, datastax_credentials_example.yml ]
+  roles:
+    - java
+    - python-miniconda
+    - cassandra

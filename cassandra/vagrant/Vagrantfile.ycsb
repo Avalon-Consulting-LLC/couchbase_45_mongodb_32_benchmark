@@ -1,0 +1,157 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Require the AWS provider plugin and YAML module
+require 'vagrant-aws'
+require 'yaml'
+
+# Specify Vagrant version and Vagrant API version
+Vagrant.require_version '>= 1.7.0'
+VAGRANTFILE_API_VERSION = '2'
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'virtualbox'
+
+nodes = 1
+deployment_env = 'aws'
+
+# Variables for Virtualbox development
+VB_BOX = "bento/centos-6.7"
+VB_MEM = 2048
+VB_CPUS = 2
+
+# Variables for AWS
+settings = YAML.load_file '../../private_settings.yml'
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+  config.ssh.insert_key = false
+
+  # Use dummy AWS box (override in provider configuration blocks)
+  config.vm.box = 'aws-dummy'
+  config.vm.box_url = "https://github.com/mitchellh/vagrant-aws/raw/master/dummy.box"
+
+  if Vagrant.has_plugin?("vagrant-hostmanager")
+    config.hostmanager.enabled = true
+    config.hostmanager.manage_host = true
+    config.hostmanager.ignore_private_ip = false
+    config.hostmanager.include_offline = true
+  end
+
+  if Vagrant.has_plugin?("vagrant-cachier")
+    config.cache.scope = :machine
+  end
+
+  # Configure default AWS provider settings
+  config.vm.provider 'aws' do |aws|
+    # Specify access/authentication information
+    aws.access_key_id = settings["aws"]["access_key_id"]
+    aws.secret_access_key = settings["aws"]["secret_access_key"]
+
+    # Specify default AWS key pair
+    aws.keypair_name = settings["benchmark"]["keypairname"]
+
+    # Specify default region
+    aws.region = settings["benchmark"]["aws_region"]
+    aws.availability_zone = settings["benchmark"]["aws_availability_zone"]
+  end # config.vm.provider 'aws'
+
+  ## Begin configuration for many machines
+  ## We just want many copies of the same setup
+  machines = Array.new  # Could also pre-declare to customize per-machine settings
+  hosts_vars = Hash.new
+  (1..nodes).each do |machine_id|
+
+    ### Gather variables for instances
+    ip_addr = "10.0.0.#{50+machine_id}"
+
+    ## YCSB-specific
+    groups = Array["ycsb"]
+    short_name = "ycsb" + machine_id.to_s.rjust(2, "0")
+
+    host_vars = Hash.new
+
+    ## Generic variables
+    machines.push({:name => short_name, :groups => groups })
+    hosts_vars[short_name] = host_vars # Used by Ansible
+
+    config.vm.define short_name do |vmconfig|
+      vmconfig.vm.hostname = short_name
+      vmconfig.vm.box_check_update = false
+
+      # Set per-machine AWS provider configuration/overrides
+      vmconfig.vm.provider 'aws' do |aws, override|
+        # AWS SSH Settings
+        aws.ssh_host_attribute = :dns_name
+        override.ssh.private_key_path = settings["ssh"]["private_key_path"]
+        override.ssh.username = settings["ssh"]["username"]
+
+        # Security Groups
+        aws.security_groups = settings["benchmark"]["secgroups"]
+
+        # If using a subnet
+        aws.subnet_id = settings["benchmark"]["aws_subnet"]
+        aws.associate_public_ip = true  # Need to set for non-default VPC
+        aws.private_ip_address = ip_addr # Make sure this is in the right subnet
+
+        # AWS Instance
+        aws.ami = settings["benchmark"]["client_ami"]
+        aws.instance_type = settings["benchmark"]["client_size"]
+
+        aws.tags = {
+          'Name' => short_name,
+          'Type' => 'YCSB'
+        }
+      end # vmconfig.vm.provider 'aws'
+
+      # Set per-machine VirtualBox provider configuration/overrides
+      vmconfig.vm.provider 'virtualbox' do |vb, override|
+        override.vm.box = VB_BOX
+        override.vm.network :private_network, ip: ip_addr
+        vb.memory = VB_MEM
+        vb.cpus = VB_CPUS
+      end # vmconfig.vm.provider 'virtualbox'
+
+      ## Provision once all nodes are started
+      if machine_id == nodes
+        vmconfig.vm.provision :ansible do |ansible|
+          ansible.verbose = 'vv'
+          ansible.limit = "all"
+          ansible.playbook = "site.yml"
+
+          ansible.groups = group_up(machines)
+          ansible.host_vars = hosts_vars
+
+          ansible.extra_vars = {
+            deployment_environment: deployment_env  # TODO: Set provider specific
+          }
+
+          puts ansible.groups
+          puts ansible.extra_vars
+        end
+      end # end last machine
+    end # end config.vm
+  end # end (1..N).each
+end
+
+
+# Helper method to define machine groupings
+def group_up (machines)
+  groups = Hash.new
+  machines.each do |machine|
+    name = machine[:name]
+    machine[:groups].each do |group|
+      if !groups.has_key?(group)
+        groups[group] = Array.new
+      end
+      group_list = groups[group]
+      if !group_list.include?(name)
+        group_list.push(name)
+      end
+    end
+  end
+  all_groups = Array.new
+  groups.each do |k, v|
+     all_groups.push(k)
+  end
+  groups["all_groups:children"] = all_groups
+
+  return groups
+end

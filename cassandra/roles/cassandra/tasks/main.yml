@@ -1,0 +1,25 @@
+---
+- name: Resolve Cassandra installation variables
+  include_vars: "{{item}}"
+  with_first_found:
+    - "{{ cassandra_install_version }}.yml"
+
+- include: collect_info.yml
+
+- include: install_{{ cassandra_install_version }}.yml
+
+- include: optimize.yml
+- include: config.yml
+
+## TODO: Figure out why this is needed, documentation doesn't mention this
+# - name: Reload systemctl services
+#   become: true
+#   command: systemctl daemon-reload
+
+- name: Start single-instance Cassandra
+  service: name={{ cassandra_service }} state=started enabled=yes
+  when: cassandra_instances_per_node == 1
+
+- name: Disable single-instance Cassandra
+  service: name={{ cassandra_service }} state=stopped enabled=no
+  when: cassandra_instances_per_node > 1

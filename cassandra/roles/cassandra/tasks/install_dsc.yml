@@ -1,0 +1,21 @@
+---
+
+- name: Install Datastax repo (DSC)
+  when: cassandra_install_version == 'dsc'
+  yum_repository:
+    name: datastax
+    description: DataStax Repo for Apache Cassandra
+    baseurl: http://rpm.datastax.com/community
+    enabled: yes
+    gpgcheck: no
+
+- name: Install Cassandra (DSC)
+  yum: name={{ item }} state=present
+  when: cassandra_install_version == 'dsc'
+  register: cassandra_installed
+  with_items:
+    - dsc30
+
+- name: Set cassandra_config_dir fact (DSC)
+  when: cassandra_install_version == "dsc"
+  set_fact: cassandra_config_dir=/etc/cassandra

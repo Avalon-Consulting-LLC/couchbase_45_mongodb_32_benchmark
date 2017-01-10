@@ -1,0 +1,16 @@
+---
+- name: Add EPEL Repo
+  yum_repository:
+    name: epel
+    description: EPEL YUM repo
+    baseurl: http://download.fedoraproject.org/pub/epel/$releasever/$basearch/
+    gpgcheck: no
+    enabled: yes
+
+# Base installation packages
+- name: Install benchmark essentials
+  package: name={{ item }} state=present update_cache=yes
+  with_items:
+    - iperf3
+    - sysstat
+    - bc

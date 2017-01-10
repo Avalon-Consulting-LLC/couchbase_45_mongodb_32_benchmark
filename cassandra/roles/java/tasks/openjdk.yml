@@ -1,0 +1,5 @@
+---
+- name: Install packages
+  become: yes
+  become_user: root
+  package: name={{ java_openjdk_pkg }} state=present
